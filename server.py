@@ -4,9 +4,13 @@ import time
 import pymumble.pymumble_py3 as pymumble
 import pyaudio
 import numpy as np
+import hardware
 
 # global mumble object
 mumble = None
+
+# global radio controller
+radio = hardware.Radio()
 
 # state for voice activation
 state = {
