@@ -4,31 +4,13 @@ import pyaudio
 import numpy as np
 import pymumble.pymumble_py3 as pymumble
 import hardware
+import time
 
 
-class MumbleBridge:
-    """ Bridge Mumble and connect audio device """
+class VoiceDetector:
+    """ This class accepts audio and indicates if voice is detected """
 
-    def __init__(self, host, nickname):
-        # radio hardware interface
-        self.radio = hardware.Radio()
-
-        # create the mumble instance
-        self.mumble = pymumble.Mumble(host, user=nickname, port=64738, debug=False)
-
-        # identify this software
-        self.mumble.set_application_string("dmr-bridge")
-
-        # set default callbacks
-        self.mumble.callbacks.set_callback(pymumble.constants.PYMUMBLE_CLBK_CONNECTED, self.callback_connected)
-
-        # handle text messages
-        self.mumble.callbacks.set_callback(pymumble.constants.PYMUMBLE_CLBK_TEXTMESSAGERECEIVED, self.callback_received_message)
-
-        # handle incoming audio
-        self.mumble.callbacks.set_callback(pymumble.constants.PYMUMBLE_CLBK_SOUNDRECEIVED, self.callback_received_sound)
-        self.mumble.set_receive_sound(True)
-
+    def __init__(self):
         # state for voice activation
         self.state = {
             'level': 0.0,
@@ -37,56 +19,11 @@ class MumbleBridge:
             'activation_level': np.iinfo(np.uint16).max * 0.6
         }
 
-        # radio state and buffer
-        self.radio_buffer = b''
-        self.radio_state = 0
+    def put(self, pcm, frame_count):
+        pass
 
-        # open audio interface
-        self.p = pyaudio.PyAudio()
-        self.stream = None
-
-    def connect(self):
-        self.mumble.start()
-        self.mumble.is_ready()
-
-    def connected(self):
-        return self.stream.is_active()
-
-    def disconnect(self):
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
-
-        self.p.terminate()
-
-    def callback_connected(self):
-        print("Connected")
-        self.mumble.users.myself.unmute()
-
-        self.stream = self.p.open(format=self.p.get_format_from_width(2),
-                             channels=1,
-                             rate=48000,
-                             input=True,
-                             output=True,
-                             stream_callback=self.callback_audio,
-                             frames_per_buffer=4096)
-
-        self.stream.start_stream()
-
-    def callback_received_message(self, data):
-        print("Message: %s" % data.message)
-
-    def callback_received_sound(self, user, chunk):
-        # copy input to mumble input buffer
-        self.radio_buffer = self.radio_buffer + chunk.pcm
-
-    def callback_audio(self, in_data, frame_count, time_info, status):
-        if self.voice_detection(in_data):
-            # copy radio input to mumble output buffer
-            self.mumble.sound_output.add_sound(in_data)
-
-        # copy buffered mumble input buffer to radio output
-        return self.get_radio_output(frame_count), pyaudio.paContinue
+    def get(self, frame_count):
+        return None
 
     def voice_detection(self, in_data):
         """ use approach in https://github.com/jeysonmc/python-google-speech-scripts/blob/master/stt_google.py
@@ -106,7 +43,51 @@ class MumbleBridge:
 
         return self.state['count'] > 0
 
-    def get_radio_output(self, frame_count):
+
+class AudioBridge:
+    """ Bridge Audio """
+
+    def __init__(self):
+        # radio state and buffer
+        self.radio_buffer = b''
+        self.radio_state = 0
+
+        # open audio interface
+        self.p = pyaudio.PyAudio()
+        self.voice_detection = VoiceDetector()
+
+        self.stream = self.p.open(format=self.p.get_format_from_width(2),
+                             channels=1,
+                             rate=48000,
+                             input=True,
+                             output=True,
+                             stream_callback=self.callback_audio,
+                             frames_per_buffer=4096)
+
+        self.stream.start_stream()
+
+    def callback_audio(self, in_data, frame_count, time_info, status):
+        # put audio into voice detector
+        self.voice_detection.put(in_data, frame_count)
+
+        # received audio from voice detector
+        pcm = self.voice_detection.get(frame_count)
+
+        if pcm:
+            self.mumble.sound_output.add_sound(pcm)
+
+        # copy buffered mumble input buffer to radio output
+        return self.get(frame_count), pyaudio.paContinue
+
+    def run(self):
+        while True:
+            time.sleep(0.1)
+        self.stream.stop_stream()
+
+    def put(self, pcm):
+        self.radio_buffer = self.radio_buffer + pcm
+
+    def get(self, frame_count):
         chunk_size = frame_count * 2
 
         if self.radio_state == 0 and len(self.radio_buffer) < chunk_size:
@@ -128,3 +109,62 @@ class MumbleBridge:
             ret = np.zeros(frame_count, dtype=np.int16)
 
         return ret
+
+
+class MumbleBridge:
+    """ Bridge Mumble and connect audio device """
+
+    def __init__(self, host, port, nickname):
+        self.audio = None
+
+        # radio hardware interface
+        self.radio = hardware.Radio()
+
+        # create the mumble instance
+        self.mumble = pymumble.Mumble(host, user=nickname, port=port, debug=False, certfile='certs/bot.crt', keyfile='certs/bot.key')
+
+        # identify this software
+        self.mumble.set_application_string("dmr-bridge")
+
+        # set default callbacks
+        self.mumble.callbacks.set_callback(pymumble.constants.PYMUMBLE_CLBK_CONNECTED, self.callback_connected)
+
+        # handle text messages
+        self.mumble.callbacks.set_callback(pymumble.constants.PYMUMBLE_CLBK_TEXTMESSAGERECEIVED, self.callback_received_message)
+
+        # handle incoming audio
+        self.mumble.callbacks.set_callback(pymumble.constants.PYMUMBLE_CLBK_SOUNDRECEIVED, self.callback_received_sound)
+        self.mumble.set_receive_sound(True)
+
+    def connect(self):
+        self.audio = AudioBridge()
+        self.mumble.start()
+        self.mumble.is_ready()
+        self.mumble.users.myself.unmute()
+        self.set_channel("Radio")
+
+    def connected(self):
+        return self.stream.is_active()
+
+    def disconnect(self):
+        if self.stream:
+            self.stream.stop_stream()
+            self.stream.close()
+
+        self.p.terminate()
+
+    def set_channel(self, channel):
+        c = self.mumble.channels.find_by_name(channel)
+        if c:
+            c.move_in()
+
+    def callback_connected(self):
+        pass
+
+    def callback_received_message(self, data):
+        print("Message: %s" % data.message)
+
+    def callback_received_sound(self, user, chunk):
+        # copy input to mumble input buffer
+        self.audio.put(chunk.pcm)
+

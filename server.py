@@ -5,15 +5,16 @@ import time
 
 
 def main():
-    b = MumbleBridge("localhost", "Radio")
+    b = MumbleBridge("mumble.event.formulastudent.de", 64838, "BridgeBot")
     b.connect()
+
     try:
         while True:
             time.sleep(0.1)
     except KeyboardInterrupt:
         pass
 
-    b.disconnect()
+    #b.disconnect()
 
 if __name__ == "__main__":
     main()
