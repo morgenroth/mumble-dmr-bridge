@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from audio import MumbleBridge
+from lib.mumble import MumbleBridge
 import time
 
 
