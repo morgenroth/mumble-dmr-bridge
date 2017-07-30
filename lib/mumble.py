@@ -44,7 +44,6 @@ class MumbleBridge:
 
     def disconnect(self):
         self.audio.close()
-        self.mumble.stop()
 
     def set_channel(self, channel):
         c = self.mumble.channels.find_by_name(channel)
@@ -52,8 +51,7 @@ class MumbleBridge:
             c.move_in()
 
     def callback_audio(self, pcm):
-        if self.mumble.is_ready():
-            self.mumble.sound_output.add_sound(pcm)
+        self.mumble.sound_output.add_sound(pcm)
 
     def callback_connected(self):
         pass

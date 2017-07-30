@@ -14,7 +14,7 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    #b.disconnect()
+    b.disconnect()
 
 if __name__ == "__main__":
     main()

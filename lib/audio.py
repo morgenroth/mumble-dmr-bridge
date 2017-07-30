@@ -4,6 +4,8 @@ import queue
 import pyaudio
 import lib.hardware as hardware
 import threading
+import audioop
+import time
 
 
 class AudioBuffer:
@@ -85,7 +87,7 @@ class AudioBuffer:
 
 class AudioBridge:
     """ Bridge Audio """
-    AUDIO_FRAME = 16384
+    AUDIO_FRAME = 8192
     AUDIO_BUFFER = AUDIO_FRAME * 20
 
     def __init__(self, callback):
@@ -99,7 +101,7 @@ class AudioBridge:
 
         # open audio interface
         self.p = pyaudio.PyAudio()
-        self.voice_detection = VoiceDetector()
+        self.voice_detection = VoiceDetector(self.callback_voice_detected)
 
         self.stream = self.p.open(format=self.p.get_format_from_width(2),
                                   channels=1,
@@ -110,20 +112,16 @@ class AudioBridge:
                                   frames_per_buffer=AudioBridge.AUDIO_FRAME)
 
     def open(self):
+        self.voice_detection.start()
         self.stream.start_stream()
 
     def close(self):
         self.stream.stop_stream()
+        self.voice_detection.stop()
 
     def callback_process_audio(self, in_data, frame_count, time_info, status):
         # put audio into voice detector
         self.voice_detection.put(in_data)
-
-        # received audio from voice detector
-        pcm = self.voice_detection.get()
-
-        if pcm:
-            self.callback_bridge_audio(pcm)
 
         if not self.output_buffer.empty():
             self.hardware.talk()
@@ -133,23 +131,24 @@ class AudioBridge:
         # copy buffered mumble input buffer to radio output
         return self.output_buffer.get(frame_count, hold=(not self.hardware.is_ready())), pyaudio.paContinue
 
+    def callback_voice_detected(self, pcm):
+        self.callback_bridge_audio(pcm)
+
     def put(self, pcm):
         self.output_buffer.put(np.fromstring(pcm, dtype=np.int16))
 
 
-class VoiceDetector:
+class VoiceDetector(threading.Thread):
     """ This class accepts audio and indicates if voice is detected """
+    THRESHOLD_LEVEL = 2000.0
+    MIN_DURATION = 0.5
 
-    def __init__(self):
-        # state for voice activation
-        self.state = {
-            'level': 0.0,
-            'count': 0,
-            'maxcount': 3,
-            'activation_level': np.iinfo(np.uint16).max * 0.6
-        }
-
+    def __init__(self, callback):
+        threading.Thread.__init__(self)
         self.queue = queue.Queue()
+        self.callback = callback
+        self.active = False
+        self.active_ts = None
 
     def put(self, pcm):
         try:
@@ -157,30 +156,36 @@ class VoiceDetector:
         except queue.Full:
             pass
 
-    def get(self):
+    def run(self):
         try:
-            return self.queue.get(False)
+            while True:
+                obj = self.queue.get(True)
+                if obj is None:
+                    break
+                if self.voice_detection(obj):
+                    self.callback(obj)
         except queue.Empty:
             return None
 
+    def stop(self):
+        self.queue.put(None)
+        self.join()
+
     def voice_detection(self, in_data):
-        """ use approach in https://github.com/jeysonmc/python-google-speech-scripts/blob/master/stt_google.py
-        for voice detection """
         # look for high input level
         input_frames = np.fromstring(in_data, dtype=np.uint16)
+        level = audioop.maxpp(input_frames, 2)
 
-        # store current average level
-        self.state['level'] = np.mean(input_frames)
+        #print("length: %d, avg: %f" % (len(in_data), level))
 
-        if self.state['level'] < (self.state['activation_level'] * 0.8) and self.state['count'] > 0:
-            self.state['count'] = self.state['count'] - 1
-        elif self.state['level'] > (self.state['activation_level'] * 1.2) and self.state['count'] < self.state['maxcount']:
-            if self.state['count'] < 2:
-                self.state['count'] = 2
-            self.state['count'] = self.state['count'] + 1
+        if level > VoiceDetector.THRESHOLD_LEVEL:
+            self.active = True
+            self.active_ts = time.time()
 
-        return self.state['count'] > 0
+        if self.active and ((time.time() - self.active_ts) > VoiceDetector.MIN_DURATION):
+            self.active = False
 
+        return self.active
 
 if __name__ == "__main__":
     AudioBuffer.test()
