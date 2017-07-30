@@ -98,6 +98,7 @@ class AudioBridge:
         # open audio interface
         self.p = pyaudio.PyAudio()
         self.voice_detection = VoiceDetector(self.callback_voice_detected)
+        self.active_user = None
 
         self.stream = self.p.open(format=self.p.get_format_from_width(2),
                                   channels=1,
@@ -130,7 +131,14 @@ class AudioBridge:
     def callback_voice_detected(self, pcm):
         self.callback_bridge_audio(pcm)
 
-    def put(self, pcm):
+    def put(self, user, pcm):
+        if self.active_user and not self.output_buffer.empty() and user != self.active_user:
+            return
+
+        if user != self.active_user:
+            print("%s is now talking..." % user['name'])
+            self.active_user = user
+
         self.output_buffer.put(np.fromstring(pcm, dtype=np.int16))
 
 

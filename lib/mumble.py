@@ -61,4 +61,4 @@ class MumbleBridge:
 
     def callback_received_sound(self, user, chunk):
         # convert to bytes
-        self.audio.put(chunk.pcm)
+        self.audio.put(user, chunk.pcm)
