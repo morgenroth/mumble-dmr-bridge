@@ -95,10 +95,6 @@ class AudioBridge:
         self.output_buffer = AudioBuffer(dtype=np.int16, size=AudioBridge.AUDIO_BUFFER)
         self.hardware = hardware.Radio()
 
-        # radio state and buffer
-        self.radio_buffer = b''
-        self.radio_state = 0
-
         # open audio interface
         self.p = pyaudio.PyAudio()
         self.voice_detection = VoiceDetector(self.callback_voice_detected)
