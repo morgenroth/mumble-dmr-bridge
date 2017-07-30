@@ -144,7 +144,8 @@ class AudioBridge:
 
 class VoiceDetector(threading.Thread):
     """ This class accepts audio and indicates if voice is detected """
-    THRESHOLD_LEVEL = 2000.0
+    THRESHOLD_ACTIVATION_LEVEL = 10000.0
+    THRESHOLD_DEACTIVATION_LEVEL = 1000.0
     MIN_DURATION = 0.5
 
     def __init__(self, callback):
@@ -182,7 +183,8 @@ class VoiceDetector(threading.Thread):
 
         #print("length: %d, avg: %f" % (len(in_data), level))
 
-        if level > VoiceDetector.THRESHOLD_LEVEL:
+        if level > VoiceDetector.THRESHOLD_ACTIVATION_LEVEL or \
+            (level > VoiceDetector.THRESHOLD_DEACTIVATION_LEVEL and self.active):
             self.active = True
             self.active_ts = time.time()
 
