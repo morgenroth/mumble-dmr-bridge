@@ -193,10 +193,14 @@ class VoiceDetector(threading.Thread):
 
         if level > VoiceDetector.THRESHOLD_ACTIVATION_LEVEL or \
             (level > VoiceDetector.THRESHOLD_DEACTIVATION_LEVEL and self.active):
-            self.active = True
+            if not self.active:
+                print("Voice detected")
+                self.active = True
             self.active_ts = time.time()
 
         if self.active and ((time.time() - self.active_ts) > VoiceDetector.MIN_DURATION):
+            if self.active:
+                print("Voice stopped")
             self.active = False
 
         return self.active
