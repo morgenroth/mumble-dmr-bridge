@@ -88,7 +88,8 @@ class AudioBuffer:
 class AudioBridge:
     """ Bridge Audio """
     AUDIO_FRAME = 8192
-    AUDIO_BUFFER = AUDIO_FRAME * 20
+    AUDIO_BUFFER = AUDIO_FRAME * 8
+    AUDIO_HOLD = 1.5
 
     def __init__(self, callback):
         self.callback_bridge_audio = callback
@@ -144,8 +145,8 @@ class AudioBridge:
 
 class VoiceDetector(threading.Thread):
     """ This class accepts audio and indicates if voice is detected """
-    THRESHOLD_ACTIVATION_LEVEL = 10000.0
-    THRESHOLD_DEACTIVATION_LEVEL = 1000.0
+    THRESHOLD_ACTIVATION_LEVEL = 20000.0
+    THRESHOLD_DEACTIVATION_LEVEL = 6000.0
     MIN_DURATION = 0.5
 
     def __init__(self, callback):

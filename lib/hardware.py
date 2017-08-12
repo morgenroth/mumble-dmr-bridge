@@ -10,7 +10,7 @@ except ImportError:
 class Radio:
     """ Abstraction class for radio control """
     PIN_PTT = 3
-    HOLD_DELAY = 1.0
+    HOLD_DELAY = 0.0
     STATE_HOLD = 0
     STATE_RELEASED = 1
 
