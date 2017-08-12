@@ -95,6 +95,7 @@ class AudioBridge:
         self.callback_bridge_audio = callback
         self.output_buffer = AudioBuffer(dtype=np.int16, size=AudioBridge.AUDIO_BUFFER)
         self.hardware = hardware.Radio()
+        self.talk_time = None
 
         # open audio interface
         self.p = pyaudio.PyAudio()
@@ -118,13 +119,19 @@ class AudioBridge:
         self.voice_detection.stop()
 
     def callback_process_audio(self, in_data, frame_count, time_info, status):
-        # put audio into voice detector
-        self.voice_detection.put(in_data)
+        if self.hardware.state == hardware.Radio.STATE_RELEASED:
+            # put audio into voice detector
+            self.voice_detection.put(in_data)
+        else:
+            self.voice_detection.put(np.zeros(frame_count, dtype=self.output_buffer.dtype))
 
         if not self.output_buffer.empty():
+            self.talk_time = time.time()
             self.hardware.talk()
-        else:
-            self.hardware.release()
+        elif self.talk_time:
+            if (time.time() - self.talk_time) > AudioBridge.AUDIO_HOLD:
+                self.talk_time = None
+                self.hardware.release()
 
         # copy buffered mumble input buffer to radio output
         return self.output_buffer.get(frame_count, hold=(not self.hardware.is_ready())), pyaudio.paContinue
